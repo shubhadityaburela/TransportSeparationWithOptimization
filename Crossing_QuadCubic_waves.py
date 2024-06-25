@@ -16,6 +16,7 @@ from minimizer_helper import generate_phi
 matplotlib.use('TkAgg')
 import os
 
+
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",
@@ -39,37 +40,36 @@ class Parameters:
     nf: int = 2
     n: int = 150
     m: int = 75
-    sigma: float = 1.0
     K = [1, 1]  # We use a single type of basis in each frame
     type_basis = [["gaussian"], ["gaussian"]]  # We use a single Gaussian basis for each frame
     K_st = [0, 1, 2]  # Just to get the indexing access of the array right
-
+    sigma: float = 1.0
 
     x: np.ndarray = None
     t: np.ndarray = None
     t_start: float = -10.0
     t_end: float = 10.0
 
-    degree = [2, 3]  # We use a linear polynomial and a quadratic polynomial for both the frames respectively
-    degree_st = [0, 2, 5]  # Just to get the indexing access of the array right
-    beta_init = [[0.1, -0], [-0.5, 0, 0]]  # Initial guess value for the coefficients of the shifts
+
+    degree = [3, 4]  # We use a quadratic polynomial and a cubic polynomial for both the frames respectively
+    degree_st = [0, 3, 7]  # Just to get the indexing access of the array right
+    beta_init = [[0.01, -0, -1.0], [0.001, -0, -0.0, 1.0]]  # Initial guess value for the coefficients of the shifts
     type_shift = ["polynomial", "polynomial"]  # We use polynomial shifts for both the frames
-    beta = [[-2, 2], [1.0, 0.05, -1.5]]
-    center_of_matrix = [85, 30]
+    beta = [[1.0, -1.0, -1.0], [0.07, 0.2, -2.5, 0.01]]
+    center_of_matrix = [20, 70]
 
-
-    alpha_solver_ck: float = 10000
+    alpha_solver_ck: float = 100000
     alpha_solver_lamda_1: float = 0.1
 
-    beta_solver_tau: float = 0.00001
-    beta_solver_sigma: float = 0.00001    # 0.99 / beta_solver_tau
+    beta_solver_tau: float = 0.0000001
+    beta_solver_sigma: float = 0.0000001  # 0.99 / beta_solver_tau
     beta_solver_lamda_2: float = 0.1
     beta_solver_rho_n: float = 1.0
     beta_solver_gtol: float = 1e-3
     beta_solver_maxit: int = 5
 
-    gtol: float = 1e-10
-    maxit: int = 50000
+    gtol: float = 1e-8
+    maxit: int = 1000000
 
 
 if __name__ == '__main__':
@@ -91,7 +91,7 @@ if __name__ == '__main__':
 
 
     # Plots the results
-    impath = "plots/QuadStraight/"  # For plots
+    impath = "plots/QuadCubic/"  # For plots
     os.makedirs(impath, exist_ok=True)
 
     # Plot the separated frames

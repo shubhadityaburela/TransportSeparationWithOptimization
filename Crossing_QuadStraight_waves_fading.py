@@ -10,11 +10,12 @@ from matplotlib.ticker import MaxNLocator
 import matplotlib
 
 from Minimizer import argmin_H
-from data_generation import generate_data
+from data_generation import generate_data_faded
 from minimizer_helper import generate_phi
 
 matplotlib.use('TkAgg')
 import os
+
 
 plt.rcParams.update({
     "text.usetex": True,
@@ -44,7 +45,6 @@ class Parameters:
     type_basis = [["gaussian"], ["gaussian"]]  # We use a single Gaussian basis for each frame
     K_st = [0, 1, 2]  # Just to get the indexing access of the array right
 
-
     x: np.ndarray = None
     t: np.ndarray = None
     t_start: float = -10.0
@@ -57,12 +57,11 @@ class Parameters:
     beta = [[-2, 2], [1.0, 0.05, -1.5]]
     center_of_matrix = [85, 30]
 
-
     alpha_solver_ck: float = 10000
     alpha_solver_lamda_1: float = 0.1
 
     beta_solver_tau: float = 0.00001
-    beta_solver_sigma: float = 0.00001    # 0.99 / beta_solver_tau
+    beta_solver_sigma: float = 0.00001  # 0.99 / beta_solver_tau
     beta_solver_lamda_2: float = 0.1
     beta_solver_rho_n: float = 1.0
     beta_solver_gtol: float = 1e-3
@@ -79,7 +78,7 @@ if __name__ == '__main__':
     print(param)
 
     # Generate the data
-    Q, _, _ = generate_data(param, param.beta)
+    Q, _, _ = generate_data_faded(param, param.beta)
 
     # Optimize over alpha and beta
     alpha, beta, J, R = argmin_H(Q, param)
@@ -91,7 +90,7 @@ if __name__ == '__main__':
 
 
     # Plots the results
-    impath = "plots/QuadStraight/"  # For plots
+    impath = "plots/QuadStraight_fading/"  # For plots
     os.makedirs(impath, exist_ok=True)
 
     # Plot the separated frames

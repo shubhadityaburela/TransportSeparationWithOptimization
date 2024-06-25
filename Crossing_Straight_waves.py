@@ -9,10 +9,12 @@ from matplotlib.ticker import MaxNLocator
 import os
 
 import matplotlib
+
+from Minimizer import argmin_H
+from data_generation import generate_data
+from minimizer_helper import generate_phi
+
 matplotlib.use('TkAgg')
-
-
-from Minimizer import generate_data, argmin_H, generate_phi
 
 
 @dataclass
@@ -20,50 +22,53 @@ class Parameters:
     nf: int = 2
     n: int = 150
     m: int = 75
+    K = [1, 1]  # We use a single type of basis in each frame
+    type_basis = [["gaussian"], ["gaussian"]]  # We use a single Gaussian basis for each frame
+    K_st = [0, 1, 2]  # Just to get the indexing access of the array right
     sigma: float = 1.0
-    K_1: int = 1
-    K_2: int = 1
-    degree1: int = 2
-    degree2: int = 2
 
-    beta1_init = [1, -1]
-    beta2_init = [-1, 1]
-    beta1 = [4, -1]
-    beta2 = [-3, -3]
-    center_of_matrix1: float = 75
-    center_of_matrix2: float = 75
+    x: np.ndarray = None
+    t: np.ndarray = None
+    t_start: float = -10.0
+    t_end: float = 10.0
 
-    alpha_solver_ck: float = 1000
-    alpha_solver_lamda_1: float = 0.05
+    degree = [2, 2]  # We use a linear polynomial for both the frames
+    degree_st = [0, 2, 4]  # Just to get the indexing access of the array right
+    beta_init = [[2, -1], [-2, 1]]  # Initial guess value for the coefficients of the shifts
+    type_shift = ["polynomial", "polynomial"]  # We use polynomial shifts for both the frames
+    beta = [[-3, 0.1], [1.5, -0.1]]
+    center_of_matrix = [100, 75]
 
-    beta_solver_tau: float = 0.001
+    alpha_solver_ck: float = 10000
+    alpha_solver_lamda_1: float = 0.1
+
+    beta_solver_tau: float = 0.0005
     beta_solver_sigma: float = 0.99 / beta_solver_tau
-    beta_solver_lamda_2: float = 0.05
-    beta_solver_rho_n: float = 1
+    beta_solver_lamda_2: float = 0.1
+    beta_solver_rho_n: float = 1.0
     beta_solver_gtol: float = 1e-3
-    beta_solver_maxit: int = 50
+    beta_solver_maxit: int = 5
 
-    gtol: float = 1e-5
-    maxit: int = 2000
+    gtol: float = 1e-10
+    maxit: int = 10000
 
 
 if __name__ == '__main__':
 
     # Instantiate the constants for the optimization
     param = Parameters()
+    print(param)
 
     # Generate the data
-    Q, _, _, x, t = generate_data(param, param.beta1, param.beta2)
+    Q, _, _ = generate_data(param, param.beta)
 
     # Optimize over alpha and beta
     alpha, beta, J, R = argmin_H(Q, param)
 
     # Reconstruct the individual frames after separation and convergence
-    beta1 = beta[:param.degree1]
-    beta2 = beta[param.degree1:]
-    phi1Beta1, phi2Beta2 = generate_phi(param, beta1, beta2)
-    Q1 = np.einsum('ijk,kj->ij', phi1Beta1, alpha[:param.K_1], optimize="optimal")
-    Q2 = np.einsum('ijk,kj->ij', phi2Beta2, alpha[param.K_1:], optimize="optimal")
+    phiBeta = generate_phi(param, beta)
+    Q1 = np.einsum('ijk,kj->ij', phiBeta[0], alpha[param.K_st[0]:param.K_st[1], :])
+    Q2 = np.einsum('ijk,kj->ij', phiBeta[1], alpha[param.K_st[1]:param.K_st[2], :])
 
     # Plots the results
     impath = "plots/Straight/"  # For plots
