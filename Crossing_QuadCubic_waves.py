@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.ndimage import shift
 from math import sqrt
 from scipy.sparse import diags
@@ -13,8 +14,12 @@ from Minimizer import argmin_H
 from data_generation import generate_data
 from minimizer_helper import generate_phi
 
-matplotlib.use('TkAgg')
+matplotlib.use('Agg')
 import os
+
+# Plots the results
+impath = "plots/QuadCubic/"  # For plots
+os.makedirs(impath, exist_ok=True)
 
 
 plt.rcParams.update({
@@ -38,12 +43,12 @@ plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 @dataclass
 class Parameters:
     nf: int = 2
-    n: int = 150
-    m: int = 75
+    n: int = 300
+    m: int = 150
     K = [1, 1]  # We use a single type of basis in each frame
     type_basis = [["gaussian"], ["gaussian"]]  # We use a single Gaussian basis for each frame
     K_st = [0, 1, 2]  # Just to get the indexing access of the array right
-    sigma: float = 1.0
+    sigma = [[4.0], [4.0]]  # Gaussian variance for each frame
 
     x: np.ndarray = None
     t: np.ndarray = None
@@ -53,12 +58,12 @@ class Parameters:
 
     degree = [3, 4]  # We use a quadratic polynomial and a cubic polynomial for both the frames respectively
     degree_st = [0, 3, 7]  # Just to get the indexing access of the array right
-    beta_init = [[0.01, -0, -1.0], [0.001, -0, -0.0, 1.0]]  # Initial guess value for the coefficients of the shifts
+    beta_init = [[-0.5, -0, -1.0], [0.001, -0, -0.0, 1.0]]  # Initial guess value for the coefficients of the shifts
     type_shift = ["polynomial", "polynomial"]  # We use polynomial shifts for both the frames
-    beta = [[1.0, -1.0, -1.0], [0.07, 0.2, -2.5, 0.01]]
-    center_of_matrix = [20, 70]
+    beta = [[2.0, -1.0, -1.0], [0.08, 0.1, -0.5, 1.5]]
+    center_of_matrix = [70, 140]
 
-    alpha_solver_ck: float = 100000
+    alpha_solver_ck: float = 1000000
     alpha_solver_lamda_1: float = 0.1
 
     beta_solver_tau: float = 0.0000001
@@ -69,7 +74,7 @@ class Parameters:
     beta_solver_maxit: int = 5
 
     gtol: float = 1e-8
-    maxit: int = 1000000
+    maxit: int = 100000
 
 
 if __name__ == '__main__':
@@ -81,6 +86,22 @@ if __name__ == '__main__':
     # Generate the data
     Q, _, _ = generate_data(param, param.beta)
 
+    # Plot the data
+    fig1 = plt.figure(figsize=(5, 5))
+    ax1 = fig1.add_subplot(111)
+    vmin = np.min(Q)
+    vmax = np.max(Q)
+    im1 = ax1.pcolormesh(Q.T, vmin=vmin, vmax=vmax, cmap='viridis')
+    ax1.set_xlabel(r"$x$")
+    ax1.set_ylabel(r"$t$")
+    ax1.axis('off')
+    divider = make_axes_locatable(ax1)
+    cax = divider.append_axes('right', size='10%', pad=0.08)
+    fig1.colorbar(im1, cax=cax, orientation='vertical')
+    fig1.supylabel(r"time $t$")
+    fig1.supxlabel(r"space $x$")
+    fig1.savefig(impath + "Q", dpi=300, transparent=True)
+
     # Optimize over alpha and beta
     alpha, beta, J, R = argmin_H(Q, param)
 
@@ -89,36 +110,42 @@ if __name__ == '__main__':
     Q1 = np.einsum('ijk,kj->ij', phiBeta[0], alpha[param.K_st[0]:param.K_st[1], :])
     Q2 = np.einsum('ijk,kj->ij', phiBeta[1], alpha[param.K_st[1]:param.K_st[2], :])
 
-
-    # Plots the results
-    impath = "plots/QuadCubic/"  # For plots
-    os.makedirs(impath, exist_ok=True)
-
     # Plot the separated frames
-    fig, axs = plt.subplots(1, 4, figsize=(16, 6))
-    vmin = np.min(Q)
-    vmax = np.max(Q)
+    fig, axs = plt.subplots(1, 4, figsize=(16, 6), sharey=True, sharex=True)
     # Original
-    axs[0].imshow(Q, vmin=vmin, vmax=vmax, cmap='hot', aspect='auto')
-    axs[0].set_title('Original')
-    axs[0].set_xlabel('$t_j$')
-    axs[0].set_ylabel('$x_i$')
+    axs[0].pcolormesh(Q.T, vmin=vmin, vmax=vmax, cmap='viridis')
+    axs[0].set_title(r"$Q$")
+    axs[0].set_ylabel(r"$t$")
+    axs[0].set_xlabel(r"$x$")
+    axs[0].set_xticks([])
+    axs[0].set_yticks([])
+
     # Frame 1
-    axs[1].imshow(Q1, vmin=vmin, vmax=vmax, cmap='hot', aspect='auto')
-    axs[1].set_title('Frame 1')
-    axs[1].set_xlabel('$t_j$')
-    axs[1].set_ylabel('$x_i$')
+    axs[1].pcolormesh(Q1.T, vmin=vmin, vmax=vmax, cmap='viridis')
+    axs[1].set_title(r"$\mathcal{T}^1Q^1$")
+    axs[1].set_ylabel(r"$t$")
+    axs[1].set_xlabel(r"$x$")
+    axs[1].set_xticks([])
+    axs[1].set_yticks([])
+
     # Frame 2
-    axs[2].imshow(Q2, vmin=vmin, vmax=vmax, cmap='hot', aspect='auto')
-    axs[2].set_title('Frame 2')
-    axs[2].set_xlabel('$t_j$')
-    axs[2].set_ylabel('$x_i$')
+    axs[2].pcolormesh(Q2.T, vmin=vmin, vmax=vmax, cmap='viridis')
+    axs[2].set_title(r"$\mathcal{T}^2Q^2$")
+    axs[2].set_ylabel(r"$t$")
+    axs[2].set_xlabel(r"$x$")
+    axs[2].set_xticks([])
+    axs[2].set_yticks([])
+
     # Reconstructed
-    axs[3].imshow(Q1+Q2, vmin=vmin, vmax=vmax, cmap='hot', aspect='auto')
-    axs[3].set_title('Reconstructed')
-    axs[3].set_xlabel('$t_j$')
-    axs[3].set_ylabel('$x_i$')
-    fig.savefig(impath + "Q", dpi=300, transparent=True)
+    im4 = axs[3].pcolormesh((Q1 + Q2).T, vmin=vmin, vmax=vmax, cmap='viridis')
+    axs[3].set_title(r"$\tilde{Q}$")
+    axs[3].set_ylabel(r"$t$")
+    axs[3].set_xlabel(r"$x$")
+    axs[3].set_xticks([])
+    axs[3].set_yticks([])
+
+    plt.colorbar(im4, ax=axs.ravel().tolist(), orientation='vertical')
+    fig.savefig(impath + "Q_opti", dpi=300, transparent=True)
 
     # Plot the cost functional
     fig1 = plt.figure(figsize=(12, 12))

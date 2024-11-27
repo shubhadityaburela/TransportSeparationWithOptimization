@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.ndimage import shift
 from math import sqrt
 from scipy.sparse import diags
@@ -14,6 +15,11 @@ from minimizer_helper import generate_phi
 
 matplotlib.use('TkAgg')
 import os
+
+
+# Plots the results
+impath = "plots/Wildlandfire1D/"  # For plots
+os.makedirs(impath, exist_ok=True)
 
 
 plt.rcParams.update({
@@ -39,10 +45,10 @@ class Parameters:
     nf: int = 3
     n: int = None
     m: int = None
-    sigma = [[1.0, 6.0], [3.0], [1.0, 6.0]]  # Gaussian variance for each frame
-    K = [2, 1, 2]  # We use a single type of basis in each frame
-    type_basis = [["gaussian", "gaussian"], ["gaussian"], ["gaussian", "gaussian"]]  # We use a single Gaussian basis for each frame
-    K_st = [0, 2, 3, 5]  # Just to get the indexing access of the array right
+    sigma = [[3.0], [3.0], [3.0]]  # Gaussian variance for each frame
+    K = [1, 1, 1]  # We use a single type of basis in each frame
+    type_basis = [["gaussian"], ["gaussian"], ["gaussian"]]  # We use a single Gaussian basis for each frame
+    K_st = [0, 1, 2, 3]  # Just to get the indexing access of the array right
 
     x: np.ndarray = None
     t: np.ndarray = None
@@ -53,18 +59,18 @@ class Parameters:
     type_shift = ["polynomial", "polynomial", "polynomial"]  # We use polynomial shifts for all the frames
     center_of_matrix = [0, 0, 0]
 
-    alpha_solver_ck: float = 50000
-    alpha_solver_lamda_1: float = 10
+    alpha_solver_ck: float = 5000000
+    alpha_solver_lamda_1: float = 0.1
 
-    beta_solver_tau: float = 0.00005
-    beta_solver_sigma: float = 0.00005
+    beta_solver_tau: float = 0.0000005
+    beta_solver_sigma: float = 0.0000005
     beta_solver_lamda_2: float = 0.1
     beta_solver_rho_n: float = 1.0
     beta_solver_gtol: float = 1e-3
     beta_solver_maxit: int = 5
 
     gtol: float = 1e-8
-    maxit: int = 100
+    maxit: int = 100000
 
     type: str = 'Wildlandfire1D'
 
@@ -83,6 +89,22 @@ if __name__ == '__main__':
     # Normalize the input data
     Q = (Q - Q.min())/(Q.max() - Q.min())
 
+    # Plot the data
+    fig1 = plt.figure(figsize=(5, 5))
+    ax1 = fig1.add_subplot(111)
+    vmin = np.min(Q)
+    vmax = np.max(Q)
+    im1 = ax1.pcolormesh(Q.T, vmin=vmin, vmax=vmax, cmap='viridis')
+    ax1.set_xlabel(r"$x$")
+    ax1.set_ylabel(r"$t$")
+    ax1.axis('off')
+    divider = make_axes_locatable(ax1)
+    cax = divider.append_axes('right', size='10%', pad=0.08)
+    fig1.colorbar(im1, cax=cax, orientation='vertical')
+    fig1.supylabel(r"time $t$")
+    fig1.supxlabel(r"space $x$")
+    fig1.savefig(impath + "Q", dpi=300, transparent=True)
+
     # Instantiate the constants for the optimization
     param = Parameters()
     param.n = Nx
@@ -100,46 +122,50 @@ if __name__ == '__main__':
     Q2 = np.einsum('ijk,kj->ij', phiBeta[1], alpha[param.K_st[1]:param.K_st[2], :])
     Q3 = np.einsum('ijk,kj->ij', phiBeta[2], alpha[param.K_st[2]:param.K_st[3], :])
 
-
-    # Plots the results
-    impath = "plots/Wildlandfire1D/"  # For plots
-    os.makedirs(impath, exist_ok=True)
-
     # Plot the separated frames
-    fig, axs = plt.subplots(1, 5, figsize=(20, 6))
-    vmin = np.min(Q)
-    vmax = np.max(Q)
+    fig, axs = plt.subplots(1, 5, figsize=(20, 6), sharey=True, sharex=True)
     # Original
-    axs[0].imshow(Q, vmin=vmin, vmax=vmax, cmap='hot', aspect='auto')
-    # axs[0].imshow(Q, cmap='hot', aspect='auto')
-    axs[0].set_title('Original')
-    axs[0].set_xlabel('$t_j$')
-    axs[0].set_ylabel('$x_i$')
+    axs[0].pcolormesh(Q.T, vmin=vmin, vmax=vmax, cmap='viridis')
+    axs[0].set_title(r"$Q$")
+    axs[0].set_ylabel(r"$t$")
+    axs[0].set_xlabel(r"$x$")
+    axs[0].set_xticks([])
+    axs[0].set_yticks([])
+
     # Frame 1
-    axs[1].imshow(Q1, vmin=vmin, vmax=vmax, cmap='hot', aspect='auto')
-    # axs[1].imshow(Q1, cmap='hot', aspect='auto')
-    axs[1].set_title('Frame 1')
-    axs[1].set_xlabel('$t_j$')
-    axs[1].set_ylabel('$x_i$')
+    axs[1].pcolormesh(Q1.T, vmin=vmin, vmax=vmax, cmap='viridis')
+    axs[1].set_title(r"$\mathcal{T}^1Q^1$")
+    axs[1].set_ylabel(r"$t$")
+    axs[1].set_xlabel(r"$x$")
+    axs[1].set_xticks([])
+    axs[1].set_yticks([])
+
     # Frame 2
-    axs[2].imshow(Q2, vmin=vmin, vmax=vmax, cmap='hot', aspect='auto')
-    # axs[2].imshow(Q2, cmap='hot', aspect='auto')
-    axs[2].set_title('Frame 2')
-    axs[2].set_xlabel('$t_j$')
-    axs[2].set_ylabel('$x_i$')
+    axs[2].pcolormesh(Q2.T, vmin=vmin, vmax=vmax, cmap='viridis')
+    axs[2].set_title(r"$\mathcal{T}^2Q^2$")
+    axs[2].set_ylabel(r"$t$")
+    axs[2].set_xlabel(r"$x$")
+    axs[2].set_xticks([])
+    axs[2].set_yticks([])
+
     # Frame 3
-    axs[3].imshow(Q3, vmin=vmin, vmax=vmax, cmap='hot', aspect='auto')
-    # axs[3].imshow(Q3, cmap='hot', aspect='auto')
-    axs[3].set_title('Frame 3')
-    axs[3].set_xlabel('$t_j$')
-    axs[3].set_ylabel('$x_i$')
-    # Reconstructed
-    axs[4].imshow(Q1+Q2+Q3, vmin=vmin, vmax=vmax, cmap='hot', aspect='auto')
-    # axs[4].imshow(Q1 + Q2 + Q3, cmap='hot', aspect='auto')
-    axs[4].set_title('Reconstructed')
-    axs[4].set_xlabel('$t_j$')
-    axs[4].set_ylabel('$x_i$')
-    fig.savefig(impath + "Q", dpi=300, transparent=True)
+    axs[3].pcolormesh(Q3.T, vmin=vmin, vmax=vmax, cmap='viridis')
+    axs[3].set_title(r"$\mathcal{T}^3Q^3$")
+    axs[3].set_ylabel(r"$t$")
+    axs[3].set_xlabel(r"$x$")
+    axs[3].set_xticks([])
+    axs[3].set_yticks([])
+
+    # Frame 4
+    im5 = axs[4].pcolormesh((Q1+Q2+Q3).T, vmin=vmin, vmax=vmax, cmap='viridis')
+    axs[4].set_title(r"$\tilde{Q}$")
+    axs[4].set_ylabel(r"$t$")
+    axs[4].set_xlabel(r"$x$")
+    axs[4].set_xticks([])
+    axs[4].set_yticks([])
+
+    plt.colorbar(im5, ax=axs.ravel().tolist(), orientation='vertical')
+    fig.savefig(impath + "Q_opti", dpi=300, transparent=True)
 
     # Plot the cost functional
     fig1 = plt.figure(figsize=(12, 12))

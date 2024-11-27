@@ -13,8 +13,8 @@ def generate_data(param, beta):
     shift1 = np.polyval(beta[0], param.t)
     shift2 = np.polyval(beta[1], param.t)
     for col in range(param.m):
-        q1[:, col] = gaussian(param.x, param.center_of_matrix[0] + shift1[col])
-        q2[:, col] = gaussian(param.x, param.center_of_matrix[1] + shift2[col])
+        q1[:, col] = gaussian(param.x, param.center_of_matrix[0] + shift1[col], param.sigma[0][0])
+        q2[:, col] = gaussian(param.x, param.center_of_matrix[1] + shift2[col], param.sigma[1][0])
 
     Q = np.maximum(q1, q2)
 
