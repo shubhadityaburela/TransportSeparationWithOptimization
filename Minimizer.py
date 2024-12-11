@@ -4,7 +4,7 @@ Block Coordinate Descent scheme with proximal algorithm
 Skeleton version
 """
 import numpy as np
-import matplotlib.pyplot as plt
+import opt_einsum as oe
 
 from cost_functionals import J
 from minimizer_helper import generate_phi, Q_recons, prox_l1, generate_phiJac, reconstruction_error
@@ -17,16 +17,13 @@ def gradient_H_alpha(Q, alpha, beta, param):
     """
     Compute the gradient of the least-squares term H in J w.r.t alpha.
     """
-    # phi => [R^{n X m X K[1]}, R^{n X m X K[2]}, .....]
-    # We have nf frames and phi is a list of 3-tensor with nf length
+    # phi => R^{nf X n X m}
+    # We have nf frames and phi 3-tensor with nf being the first dimension
     phiBeta = generate_phi(param, beta)
 
-    R = Q - Q_recons(phiBeta, alpha, param)
-    dH_dAlpha = np.zeros((sum(param.K), param.m))
-    for nf in range(param.nf):
-        for k in range(param.K[nf]):
-            dH_dAlpha[param.K_st[nf]:param.K_st[nf + 1], :] = - 2 * np.einsum('ij,ijk->kj', R, phiBeta[nf],
-                                                                              optimize="optimal")
+    R = Q - Q_recons(phiBeta, alpha)
+    # dH_dAlpha = - 2 * np.einsum('jk,ijk->ik', R, phiBeta, optimize="optimal")
+    dH_dAlpha = - 2 * oe.contract('jk,ijk->ik', R, phiBeta)
 
     return dH_dAlpha
 
@@ -46,21 +43,15 @@ def gradient_H_beta(Q, alpha, beta, param):
     """
     Compute the gradient of the least-squares term H in J w.r.t beta
     """
-    # phi => [R^{n X m X K[1]}, R^{n X m X K[2]}, .....]
-    # We have nf frames and phi is a list of 3-tensor with nf length
+    # phi => R^{nf X n X m}
+    # We have nf frames and phi 3-tensor with nf being the first dimension
 
-    # phiJac => [R^{n X m X K[1] X degree[1]}, R^{n X m X K[2] X degree[2]}, .....]
+    # phiJac => [R^{sum(degree[1st frame] + degree[2nd frame] + ...) X n X m}]
     phiBeta, phiBetaJac = generate_phiJac(param, beta)
-    R = Q - Q_recons(phiBeta, alpha, param)
+    R = Q - Q_recons(phiBeta, alpha)
 
-    dH_dBeta = np.zeros_like(beta)
-    for nf in range(param.nf):
-        for k in range(param.K[nf]):
-            dH_dBeta[param.degree_st[nf]:param.degree_st[nf + 1]] = -2 * \
-                                                                    np.einsum('ij,ijkl,kj->l', R, phiBetaJac[nf],
-                                                                              alpha[param.K_st[nf]:param.K_st[nf + 1],
-                                                                              :],
-                                                                              optimize="optimal")
+    # dH_dBeta= -2 * np.einsum('jk,ijk,lk->i', R, phiBetaJac, alpha, optimize="optimal")
+    dH_dBeta = -2 * oe.contract('jk,ijk,lk->i', R, phiBetaJac, alpha)
     return dH_dBeta
 
 
@@ -70,7 +61,7 @@ def argmin_H_beta(Q, alpha, beta, param):
     """
     # Initialization
     u = np.zeros_like(beta)  # Dual variable (Same shape as the beta variable)
-    crit = np.Inf  # Initial value of the objective function
+    crit = np.inf  # Initial value of the objective function
     eta = param.beta_solver_rho_n
 
     # Main loop

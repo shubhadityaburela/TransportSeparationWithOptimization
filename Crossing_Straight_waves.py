@@ -1,10 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from scipy.ndimage import shift
-from math import sqrt
-from scipy.sparse import diags
-from scipy.linalg import cholesky
 from dataclasses import dataclass
 from matplotlib.ticker import MaxNLocator
 import os
@@ -12,8 +8,11 @@ import os
 import matplotlib
 
 from Minimizer import argmin_H
-from data_generation import generate_data
+from data_generation import generate_data, generate_data_faded, generate_data_faded_singleframe, \
+    generate_data_singleframe
 from minimizer_helper import generate_phi
+from numba import float64, int64
+from numba.experimental import jitclass
 
 matplotlib.use('TkAgg')
 
@@ -38,51 +37,81 @@ plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 impath = "plots/Straight/"  # For plots
 os.makedirs(impath, exist_ok=True)
 
+spec = [
+    ('nf', int64),
+    ('n', int64),
+    ('m', int64),
+    ('K', int64[:]),
+    ('type_basis', int64[:]),
+    ('K_st', int64[:]),
+    ('sigma', float64[:]),
+    ('t_start', float64),
+    ('t_end', float64),
+    ('x', float64[:]),
+    ('t', float64[:]),
+    ('degree', int64[:]),
+    ('degree_st', int64[:]),
+    ('beta_init', float64[:]),
+    ('type_shift', int64[:]),
+    ('beta', float64[:]),
+    ('center_of_matrix', float64[:]),
+    ('alpha_solver_ck', float64),
+    ('alpha_solver_lamda_1', float64),
+    ('beta_solver_tau', float64),
+    ('beta_solver_sigma', float64),
+    ('beta_solver_lamda_2', float64),
+    ('beta_solver_rho_n', float64),
+    ('beta_solver_gtol', float64),
+    ('beta_solver_maxit', int64),
+    ('gtol', float64),
+    ('maxit', int64)
+]
 
-@dataclass
+
+@jitclass(spec)
 class Parameters:
-    nf: int = 2
-    n: int = 300
-    m: int = 150
-    K = [1, 1]  # We use a single type of basis in each frame
-    type_basis = [["gaussian"], ["gaussian"]]  # We use a single Gaussian basis for each frame
-    K_st = [0, 1, 2]  # Just to get the indexing access of the array right
-    sigma = [[4.0], [4.0]]  # Gaussian variance for each frame
+    def __init__(self):
+        self.nf = 1
+        self.n = 500
+        self.m = 500
+        self.K = np.array([1], dtype=np.int64)  # We use a single type of basis in each frame
+        self.type_basis = np.array([1], dtype=np.int64)  # We use a single Gaussian basis for each frame  # 1 is for Gaussian basis
+        self.K_st = np.array([0, 1], dtype=np.int64)  # Just to get the indexing access of the array right
+        self.sigma = np.array([4.0], dtype=np.float64)  # Gaussian variance for each frame
 
-    x: np.ndarray = None
-    t: np.ndarray = None
-    t_start: float = -10.0
-    t_end: float = 10.0
+        self.t_start = -10.0
+        self.t_end = 10.0
+        self.x = np.arange(0, self.n, dtype=np.float64)
+        self.t = np.linspace(self.t_start, self.t_end, self.m)
 
-    degree = [2, 2]  # We use a linear polynomial for both the frames
-    degree_st = [0, 2, 4]  # Just to get the indexing access of the array right
-    beta_init = [[2, -1], [-2, 1]]  # Initial guess value for the coefficients of the shifts
-    type_shift = ["polynomial", "polynomial"]  # We use polynomial shifts for both the frames
-    beta = [[-10, 1.5], [8, -2.0]]
-    center_of_matrix = [150, 150]
+        self.degree = np.array([2], dtype=np.int64)  # We use a linear polynomial for both the frames
+        self.degree_st = np.array([0, 2], dtype=np.int64)  # Just to get the indexing access of the array right
+        self.beta_init = np.array([2.0, -1.0], dtype=np.float64)  # Initial guess value for the coefficients of the shifts
+        self.type_shift = np.array([1], dtype=np.int64)  # We use polynomial shifts for both the frames, Code is 1 for them
+        self.beta = np.array([-10.0, 1.5], dtype=np.float64)
+        self.center_of_matrix = np.array([250], dtype=np.float64)
 
-    alpha_solver_ck: float = 10000
-    alpha_solver_lamda_1: float = 0.1
+        self.alpha_solver_ck = 10000
+        self.alpha_solver_lamda_1 = 0.1
 
-    beta_solver_tau: float = 0.00005
-    beta_solver_sigma: float = 0.00005   # 0.99 / beta_solver_tau
-    beta_solver_lamda_2: float = 0.1
-    beta_solver_rho_n: float = 1.0
-    beta_solver_gtol: float = 1e-3
-    beta_solver_maxit: int = 5
+        self.beta_solver_tau = 0.0005
+        self.beta_solver_sigma = 0.0005  # 0.99 / beta_solver_tau
+        self.beta_solver_lamda_2 = 0.1
+        self.beta_solver_rho_n = 1.0
+        self.beta_solver_gtol = 1e-3
+        self.beta_solver_maxit = 5
 
-    gtol: float = 1e-10
-    maxit: int = 50000
+        self.gtol = 1e-10
+        self.maxit = 10000
 
 
 if __name__ == '__main__':
 
     # Instantiate the constants for the optimization
     param = Parameters()
-    print(param)
 
     # Generate the data
-    Q, Q1, Q2 = generate_data(param, param.beta)
+    Q = generate_data_faded_singleframe(param, param.beta)
 
     # Plot the data
     fig1 = plt.figure(figsize=(5, 5))
@@ -100,47 +129,16 @@ if __name__ == '__main__':
     fig1.supxlabel(r"space $x$")
     fig1.savefig(impath + "Q", dpi=300, transparent=True)
 
-    # # Plot the data
-    # fig1 = plt.figure(figsize=(10, 5))
-    # ax1 = fig1.add_subplot(121)
-    # vmin = np.min(Q)
-    # vmax = np.max(Q)
-    # im1 = ax1.pcolormesh(Q1.T, vmin=vmin, vmax=vmax, cmap='viridis')
-    # ax1.set_xlabel(r"$x$")
-    # ax1.set_ylabel(r"$t$")
-    # ax1.axis('off')
-    # divider = make_axes_locatable(ax1)
-    # cax = divider.append_axes('right', size='10%', pad=0.08)
-    # fig1.colorbar(im1, cax=cax, orientation='vertical')
-    #
-    # ax2 = fig1.add_subplot(122)
-    # im2 = ax2.pcolormesh(Q2.T, vmin=vmin, vmax=vmax, cmap='viridis')
-    # ax2.set_xlabel(r"$x$")
-    # ax2.set_ylabel(r"$t$")
-    # ax2.axis('off')
-    # divider = make_axes_locatable(ax2)
-    # cax = divider.append_axes('right', size='10%', pad=0.08)
-    # fig1.colorbar(im2, cax=cax, orientation='vertical')
-    # fig1.supylabel(r"time $t$")
-    # fig1.supxlabel(r"space $x$")
-    # fig1.savefig(impath + "Q_sep", dpi=300, transparent=True)
-
-
-
-
-    exit()
-
     # Optimize over alpha and beta
     alpha, beta, J, R = argmin_H(Q, param)
 
     # Reconstruct the individual frames after separation and convergence
     phiBeta = generate_phi(param, beta)
-    Q1 = np.einsum('ijk,kj->ij', phiBeta[0], alpha[param.K_st[0]:param.K_st[1], :])
-    Q2 = np.einsum('ijk,kj->ij', phiBeta[1], alpha[param.K_st[1]:param.K_st[2], :])
+    Q_shifted = np.einsum('ij,kj->ij', phiBeta[0], alpha)
 
     # Plots the results
     # Plot the separated frames
-    fig, axs = plt.subplots(1, 4, figsize=(16, 6), sharey=True, sharex=True)
+    fig, axs = plt.subplots(1, 2, figsize=(8, 6), sharey=True, sharex=True)
     # Original
     axs[0].pcolormesh(Q.T, vmin=vmin, vmax=vmax, cmap='viridis')
     axs[0].set_title(r"$Q$")
@@ -150,30 +148,12 @@ if __name__ == '__main__':
     axs[0].set_yticks([])
 
     # Frame 1
-    axs[1].pcolormesh(Q1.T, vmin=vmin, vmax=vmax, cmap='viridis')
+    axs[1].pcolormesh(Q_shifted.T, vmin=vmin, vmax=vmax, cmap='viridis')
     axs[1].set_title(r"$\mathcal{T}^1Q^1$")
     axs[1].set_ylabel(r"$t$")
     axs[1].set_xlabel(r"$x$")
     axs[1].set_xticks([])
     axs[1].set_yticks([])
-
-    # Frame 2
-    axs[2].pcolormesh(Q2.T, vmin=vmin, vmax=vmax, cmap='viridis')
-    axs[2].set_title(r"$\mathcal{T}^2Q^2$")
-    axs[2].set_ylabel(r"$t$")
-    axs[2].set_xlabel(r"$x$")
-    axs[2].set_xticks([])
-    axs[2].set_yticks([])
-
-    # Reconstructed
-    im4 = axs[3].pcolormesh((Q1 + Q2).T, vmin=vmin, vmax=vmax, cmap='viridis')
-    axs[3].set_title(r"$\tilde{Q}$")
-    axs[3].set_ylabel(r"$t$")
-    axs[3].set_xlabel(r"$x$")
-    axs[3].set_xticks([])
-    axs[3].set_yticks([])
-
-    plt.colorbar(im4, ax=axs.ravel().tolist(), orientation='vertical')
 
     fig.savefig(impath + "Q_opti", dpi=300, transparent=True)
 

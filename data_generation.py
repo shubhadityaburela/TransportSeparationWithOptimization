@@ -1,40 +1,46 @@
 from preliminaries import *
-
+from numba import njit, prange
 
 # ============================================================================ #
 #                          Data generation functions                           #
 # ============================================================================ #
+@njit(parallel=True)
 def generate_data(param, beta):
-    param.x = np.arange(0, param.n)
-    param.t = np.linspace(param.t_start, param.t_end, param.m)
-
-    q1 = np.zeros((param.n, param.m))
-    q2 = np.zeros((param.n, param.m))
-    shift1 = np.polyval(beta[0], param.t)
-    shift2 = np.polyval(beta[1], param.t)
-    for col in range(param.m):
-        q1[:, col] = gaussian(param.x, param.center_of_matrix[0] + shift1[col], param.sigma[0][0])
-        q2[:, col] = gaussian(param.x, param.center_of_matrix[1] + shift2[col], param.sigma[1][0])
+    q1 = np.zeros((param.n, param.m), dtype=np.float64)
+    q2 = np.zeros_like(q1)
+    shift1 = numba_polyval(beta[0], param.t)
+    shift2 = numba_polyval(beta[1], param.t)
+    for col in prange(param.m):
+        q1[:, col] = gaussian(param.x, param.center_of_matrix[0] + shift1[col], param.sigma[0])
+        q2[:, col] = gaussian(param.x, param.center_of_matrix[1] + shift2[col], param.sigma[1])
 
     Q = np.maximum(q1, q2)
 
     return Q, q1, q2
 
 
+@njit(parallel=True)
+def generate_data_singleframe(param, beta):
+    q1 = np.zeros((param.n, param.m), dtype=np.float64)
+    shift1 = numba_polyval(beta, param.t)
+    for col in prange(param.m):
+        q1[:, col] = gaussian(param.x, param.center_of_matrix[0] + shift1[col], param.sigma[0])
+
+    return q1
+
+
+@njit(parallel=True)
 def generate_data_faded(param, beta):
-    param.x = np.arange(0, param.n)
-    param.t = np.linspace(param.t_start, param.t_end, param.m)
-
     # Construct the fading of the waves
-    damp = np.arange(len(param.t))
+    damp = np.arange(len(param.t), dtype=np.float64)
     damp1 = damp[::-1] / np.max(damp) + 0.3
-    damp2 = (damp / (np.max(damp) / 2)) + 2.5
+    damp2 = (damp / (np.max(damp) / 10)) + 2.5
 
-    q1 = np.zeros((param.n, param.m))
-    q2 = np.zeros((param.n, param.m))
-    shift1 = np.polyval(beta[0], param.t)
-    shift2 = np.polyval(beta[1], param.t)
-    for col in range(param.m):
+    q1 = np.zeros((param.n, param.m), dtype=np.float64)
+    q2 = np.zeros_like(q1)
+    shift1 = numba_polyval(beta[0], param.t)
+    shift2 = numba_polyval(beta[1], param.t)
+    for col in prange(param.m):
         sigma_t = 1.5
         q1[:, col] = gaussian(param.x, param.center_of_matrix[0] + shift1[col], sigma_t * damp1[col])
         q2[:, col] = gaussian(param.x, param.center_of_matrix[1] + shift2[col], sigma_t * damp2[col])
@@ -42,6 +48,21 @@ def generate_data_faded(param, beta):
     Q = np.maximum(q1, q2)
 
     return Q, q1, q2
+
+
+@njit(parallel=True)
+def generate_data_faded_singleframe(param, beta):
+    # Construct the fading of the waves
+    damp = np.arange(len(param.t), dtype=np.float64)
+    damp1 = (damp / (np.max(damp) / 10)) + 2.5
+
+    q1 = np.zeros((param.n, param.m), dtype=np.float64)
+    shift1 = numba_polyval(beta, param.t)
+    for col in prange(param.m):
+        sigma_t = 1.5
+        q1[:, col] = gaussian(param.x, param.center_of_matrix[0] + shift1[col], sigma_t * damp1[col])
+
+    return q1
 
 
 def generate_data_sine(param, beta1, beta2):
