@@ -4,9 +4,9 @@ USER_NODE="burela"
 ENTRY_SERVER="cluster-g.math.tu-berlin.de"
 
 GPU_NAME="a100_pcie_80g"
-NUM_GPUS="0"
-MEM="5G"
-NUM_CPUS="1"
+NUM_GPUS="1"
+MEM="100G"
+NUM_CPUS="10"
 
 echo "Login to entry server for allocation ( cluster PW )"
 ssh ${USER_NODE}@${ENTRY_SERVER} -t "

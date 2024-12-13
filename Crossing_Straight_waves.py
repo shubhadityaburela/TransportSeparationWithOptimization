@@ -1,20 +1,17 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import torch
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from dataclasses import dataclass
 from matplotlib.ticker import MaxNLocator
 import os
 
-import matplotlib
-
 from Minimizer import argmin_H
 from data_generation import generate_data, generate_data_faded, generate_data_faded_singleframe, \
-    generate_data_singleframe
+    generate_data_singleframe, generate_data_singleframe_torch
 from minimizer_helper import generate_phi
 from numba import float64, int64
 from numba.experimental import jitclass
-
-matplotlib.use('TkAgg')
 
 plt.rcParams.update({
     "text.usetex": True,
@@ -37,81 +34,72 @@ plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 impath = "plots/Straight/"  # For plots
 os.makedirs(impath, exist_ok=True)
 
-spec = [
-    ('nf', int64),
-    ('n', int64),
-    ('m', int64),
-    ('K', int64[:]),
-    ('type_basis', int64[:]),
-    ('K_st', int64[:]),
-    ('sigma', float64[:]),
-    ('t_start', float64),
-    ('t_end', float64),
-    ('x', float64[:]),
-    ('t', float64[:]),
-    ('degree', int64[:]),
-    ('degree_st', int64[:]),
-    ('beta_init', float64[:]),
-    ('type_shift', int64[:]),
-    ('beta', float64[:]),
-    ('center_of_matrix', float64[:]),
-    ('alpha_solver_ck', float64),
-    ('alpha_solver_lamda_1', float64),
-    ('beta_solver_tau', float64),
-    ('beta_solver_sigma', float64),
-    ('beta_solver_lamda_2', float64),
-    ('beta_solver_rho_n', float64),
-    ('beta_solver_gtol', float64),
-    ('beta_solver_maxit', int64),
-    ('gtol', float64),
-    ('maxit', int64)
-]
+device_global = "cpu"   # torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
 
-@jitclass(spec)
 class Parameters:
-    def __init__(self):
+    def __init__(self, device):
         self.nf = 1
-        self.n = 500
-        self.m = 500
-        self.K = np.array([1], dtype=np.int64)  # We use a single type of basis in each frame
-        self.type_basis = np.array([1], dtype=np.int64)  # We use a single Gaussian basis for each frame  # 1 is for Gaussian basis
-        self.K_st = np.array([0, 1], dtype=np.int64)  # Just to get the indexing access of the array right
-        self.sigma = np.array([4.0], dtype=np.float64)  # Gaussian variance for each frame
+        self.n = 1000
+        self.m = 1000
+        # self.K = torch.tensor([1], dtype=torch.int32)  # We use a single type of basis in each frame
+        # self.type_basis = torch.tensor([1], dtype=torch.int32)  # We use a single Gaussian basis for each frame  # 1 is for Gaussian basis
+        # self.K_st = torch.tensor([0, 1], dtype=torch.int32)  # Just to get the indexing access of the array right
+        self.sigma = torch.tensor(4.0, dtype=torch.float32)  # Gaussian variance for each frame
 
         self.t_start = -10.0
         self.t_end = 10.0
-        self.x = np.arange(0, self.n, dtype=np.float64)
-        self.t = np.linspace(self.t_start, self.t_end, self.m)
+        self.x = torch.arange(0, self.n, dtype=torch.float32)
+        self.t = torch.linspace(self.t_start, self.t_end, self.m, dtype=torch.float32)
 
-        self.degree = np.array([2], dtype=np.int64)  # We use a linear polynomial for both the frames
-        self.degree_st = np.array([0, 2], dtype=np.int64)  # Just to get the indexing access of the array right
-        self.beta_init = np.array([2.0, -1.0], dtype=np.float64)  # Initial guess value for the coefficients of the shifts
-        self.type_shift = np.array([1], dtype=np.int64)  # We use polynomial shifts for both the frames, Code is 1 for them
-        self.beta = np.array([-10.0, 1.5], dtype=np.float64)
-        self.center_of_matrix = np.array([250], dtype=np.float64)
+        self.degree = torch.tensor(2, dtype=torch.int32)  # We use a linear polynomial (linear shift)
+        # self.degree_st = torch.tensor([0, 2], dtype=torch.int32)  # Just to get the indexing access of the array right
+        self.beta_init = torch.tensor([2.0, -1.0], dtype=torch.float32)  # Initial guess value for the coefficients of the shifts
+        # self.type_shift = torch.tensor([1], dtype=torch.int32)  # We use polynomial shifts, Code is 1 for them
+        self.beta = torch.tensor([-10.0, 1.5], dtype=torch.float32)
+        self.center_of_matrix = torch.tensor(500, dtype=torch.float32)
 
-        self.alpha_solver_ck = 10000
-        self.alpha_solver_lamda_1 = 0.1
+        self.alpha_solver_ck = torch.tensor(10000, dtype=torch.float32)
+        self.alpha_solver_lamda_1 = torch.tensor(0.1, dtype=torch.float32)
 
-        self.beta_solver_tau = 0.0005
-        self.beta_solver_sigma = 0.0005  # 0.99 / beta_solver_tau
-        self.beta_solver_lamda_2 = 0.1
+        self.beta_solver_tau = 0.00005
+        self.beta_solver_sigma = torch.tensor(0.00005, dtype=torch.float32)  # 0.99 / beta_solver_tau
+        self.beta_solver_lamda_2 = torch.tensor(0.1, dtype=torch.float32)
         self.beta_solver_rho_n = 1.0
         self.beta_solver_gtol = 1e-3
         self.beta_solver_maxit = 5
 
         self.gtol = 1e-10
         self.maxit = 10000
+        self.device = device
+
+    def to_device(self, device):
+        for key, value in self.__dict__.items():
+            if isinstance(value, torch.Tensor):
+                setattr(self, key, value.to(device))
 
 
 if __name__ == '__main__':
 
     # Instantiate the constants for the optimization
-    param = Parameters()
+    params = Parameters(device_global)
+    params.to_device(device_global)
 
     # Generate the data
-    Q = generate_data_faded_singleframe(param, param.beta)
+    Q = generate_data_singleframe_torch(params)
+    Q = Q.to(device_global)
+
+    # Optimize over alpha and beta
+    alpha, beta, J, R = argmin_H(Q, params)
+
+    # Reconstruct the individual frames after separation and convergence
+    phiBeta = generate_phi(params, beta)
+    Q_shifted = torch.einsum('ij,j->ij', phiBeta, alpha)
+
+    # Plots the results
+    Q = Q.cpu().detach().numpy()
+    Q_shifted = Q_shifted.cpu().detach().numpy()
+    J = [tensor.cpu() for tensor in J]
 
     # Plot the data
     fig1 = plt.figure(figsize=(5, 5))
@@ -129,14 +117,6 @@ if __name__ == '__main__':
     fig1.supxlabel(r"space $x$")
     fig1.savefig(impath + "Q", dpi=300, transparent=True)
 
-    # Optimize over alpha and beta
-    alpha, beta, J, R = argmin_H(Q, param)
-
-    # Reconstruct the individual frames after separation and convergence
-    phiBeta = generate_phi(param, beta)
-    Q_shifted = np.einsum('ij,kj->ij', phiBeta[0], alpha)
-
-    # Plots the results
     # Plot the separated frames
     fig, axs = plt.subplots(1, 2, figsize=(8, 6), sharey=True, sharex=True)
     # Original

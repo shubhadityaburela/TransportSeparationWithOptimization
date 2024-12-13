@@ -1,5 +1,3 @@
-import numpy as np
-import opt_einsum as oe
 from preliminaries import *
 
 
@@ -15,6 +13,7 @@ def shift(param, beta, nf):
     elif param.type_shift[nf] == 3:   # for polynomial + Sine
         print("Polynomial and sine shift mixture not implemented yet")
         exit()
+
 
 def basis(param, shift, nf):
     if param.type_basis[nf] == 1:  # 1 for Gaussian basis
@@ -56,46 +55,37 @@ def facJac(param, shift, nf, d):
         exit()
 
 
-def generate_phi(param, beta):
-    phiBeta = np.zeros((param.nf, param.n, param.m))
-    for nf in range(param.nf):
-        beta_f = beta[param.degree_st[nf]:param.degree_st[nf + 1]]
-        shift_f = param.center_of_matrix[nf] + numba_polyval(beta_f, param.t)
-        X, S = np.meshgrid(param.x, shift_f)
-        phiBeta[nf, ...] = gaussian(X.T, S.T, param.sigma[nf])
-
-    return phiBeta
+def generate_phi(params, beta):
+    X, MU = torch.meshgrid(params.x, params.center_of_matrix + torch_polyval(beta, params.t))
+    return torch_gaussian(X, MU, params.sigma)
 
 
-def generate_phiJac(param, beta):
-    phiBeta = np.zeros((param.nf, param.n, param.m))
-    phiBetaJac = np.zeros((sum(param.degree), param.n, param.m))
+def generate_phiJac(params, beta):
+    phiBetaJac = torch.zeros((params.degree, params.n, params.m), dtype=torch.float32, device=params.device)
+    X, MU = torch.meshgrid(params.x, params.center_of_matrix + torch_polyval(beta, params.t))
+    phiBeta = torch_gaussian(X, MU, params.sigma)
+    pre = phiBeta * torch_gaussian_exponent(X, MU, params.sigma)
     deg = 0
-    for nf in range(param.nf):
-        beta_f = beta[param.degree_st[nf]:param.degree_st[nf + 1]]
-        shift_f = param.center_of_matrix[nf] + numba_polyval(beta_f, param.t)
-        X, S = np.meshgrid(param.x, shift_f)
-        phiBeta[nf, ...] = gaussian(X.T, S.T, param.sigma[nf])
-        pre = phiBeta[nf, ...] * gaussian_exponent(X.T, S.T, param.sigma[nf])
-        for d in range(param.degree[nf]):
-            phiBetaJac[deg, ...] = pre * (param.t ** (param.degree[nf] - d - 1)).reshape(1, -1)
-            deg = deg + 1
+    for d in range(params.degree):
+        phiBetaJac[deg, ...] = pre * (params.t ** (params.degree - d - 1)).reshape(1, -1)
+        deg = deg + 1
 
     return phiBeta, phiBetaJac
 
-@njit
+
+@torch.jit.script
 def prox_l1(data, reg_param):
-    tmp = np.abs(data) - reg_param
-    tmp = (tmp + np.abs(tmp)) / 2
-    y = np.sign(data) * tmp
+    tmp = torch.abs(data) - reg_param
+    tmp = (tmp + torch.abs(tmp)) / 2
+    y = torch.sign(data) * tmp
     return y
 
 
+@torch.jit.script
 def Q_recons(phiBeta, alpha):
-    # return np.einsum('ijk,ik->jk', phiBeta, alpha, optimize="optimal")
-    return oe.contract('ijk,ik->jk', phiBeta, alpha)
+    return torch.einsum('ij,j->ij', phiBeta, alpha)
 
 
 def reconstruction_error(Q, alpha, beta, param):
     phiBeta = generate_phi(param, beta)
-    return np.linalg.norm(Q - Q_recons(phiBeta, alpha)) / np.linalg.norm(Q)
+    return torch.linalg.norm(Q - Q_recons(phiBeta, alpha)) / torch.linalg.norm(Q)

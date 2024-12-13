@@ -1,8 +1,39 @@
 import numpy as np
 from numba import njit, prange
+import torch
+
 
 # ============================================================================ #
-#                       Type of basis functions and shifts                     #
+#               Type of basis functions and shifts (TORCH)                     #
+# ============================================================================ #
+
+@torch.jit.script
+def torch_gaussian_exponent(x, mu, sigma):
+    return (x - mu) / torch.pow(sigma, 2.0)
+
+
+@torch.jit.script
+def torch_gaussian(x, mu, sigma):
+    return torch.exp(-torch.pow(x - mu, 2.0) / (2 * torch.pow(sigma, 2.0)))
+
+
+@torch.jit.script
+def torch_polyval(coeffs, x_array):
+    results = torch.zeros_like(x_array)
+    for i in range(x_array.shape[0]):
+        x = x_array[i]
+        result = 0.0
+        for coeff in coeffs:
+            result = result * x + coeff
+        results[i] = result
+    return results
+
+
+
+
+
+# ============================================================================ #
+#               Type of basis functions and shifts (NUMBA)                     #
 # ============================================================================ #
 
 @njit

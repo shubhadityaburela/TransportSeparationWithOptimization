@@ -1,8 +1,20 @@
 from preliminaries import *
 from numba import njit, prange
+import torch
+
 
 # ============================================================================ #
-#                          Data generation functions                           #
+#                          Data generation functions (torch)                   #
+# ============================================================================ #
+def generate_data_singleframe_torch(params):
+    shift1 = torch_polyval(params.beta, params.t)
+    X, MU = torch.meshgrid(params.x, params.center_of_matrix + shift1)
+    q1 = torch_gaussian(X, MU, params.sigma)
+    return q1
+
+
+# ============================================================================ #
+#                          Data generation functions (NUMBA)                   #
 # ============================================================================ #
 @njit(parallel=True)
 def generate_data(param, beta):
@@ -63,6 +75,7 @@ def generate_data_faded_singleframe(param, beta):
         q1[:, col] = gaussian(param.x, param.center_of_matrix[0] + shift1[col], sigma_t * damp1[col])
 
     return q1
+
 
 
 def generate_data_sine(param, beta1, beta2):

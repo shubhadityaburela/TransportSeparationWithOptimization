@@ -5,19 +5,17 @@ from preliminaries import *
 # ============================================================================ #
 #                     FUNCTIONS FOR COST FUNCTIONAL                            #
 # ============================================================================ #
-def H(Q, alpha, beta, param):
-    phiBeta = generate_phi(param, beta)
-    return np.linalg.norm(Q - Q_recons(phiBeta, alpha), ord='fro') ** 2
+def H(Q, alpha, beta, params):
+    phiBeta = generate_phi(params, beta)
+    return torch.linalg.norm(Q - Q_recons(phiBeta, alpha), ord='fro') ** 2
 
 
-def g(alpha, param):
-    return param.alpha_solver_lamda_1 * sum([np.linalg.norm(alpha[param.K_st[nf]:param.K_st[nf + 1], :],
-                                                            ord=1) for nf in range(param.nf)])
+def g(alpha, params):
+    return params.alpha_solver_lamda_1 * torch.linalg.norm(alpha, ord=1)
 
 
-def f(beta, param):
-    return param.beta_solver_lamda_2 * sum([np.linalg.norm(beta[param.degree_st[nf]:param.degree_st[nf + 1]],
-                                                           ord=1) for nf in range(param.nf)])
+def f(beta, params):
+    return params.beta_solver_lamda_2 * torch.linalg.norm(beta, ord=1)
 
 
 def f_tilde():
