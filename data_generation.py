@@ -13,6 +13,19 @@ def generate_data_singleframe_torch(params):
     return q1
 
 
+def generate_data_faded_singleframe_torch(params):
+    # Construct the fading of the waves
+    damp = torch.arange(len(params.t))
+    damp1 = (damp / (torch.max(damp) / 15)) + 2.5
+
+    shift1 = torch_polyval(params.beta, params.t)
+    X, MU = torch.meshgrid(params.x, params.center_of_matrix + shift1)
+    q1 = torch_gaussian(X, MU, 1.5 * damp1)
+
+    return q1
+
+
+
 # ============================================================================ #
 #                          Data generation functions (NUMBA)                   #
 # ============================================================================ #

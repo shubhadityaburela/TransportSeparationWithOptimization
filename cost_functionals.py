@@ -5,8 +5,7 @@ from preliminaries import *
 # ============================================================================ #
 #                     FUNCTIONS FOR COST FUNCTIONAL                            #
 # ============================================================================ #
-def H(Q, alpha, beta, params):
-    phiBeta = generate_phi(params, beta)
+def H(Q, phiBeta, alpha, beta, params):
     return torch.linalg.norm(Q - Q_recons(phiBeta, alpha), ord='fro') ** 2
 
 
@@ -22,8 +21,8 @@ def f_tilde():
     return 0
 
 
-def J(Q, alpha, beta, param):
+def J(Q, phiBeta, alpha, beta, param):
     """
     Compute the value of the objective function J
     """
-    return H(Q, alpha, beta, param) + g(alpha, param) + f(beta, param) + f_tilde()
+    return H(Q, phiBeta, alpha, beta, param) + g(alpha, param) + f(beta, param) + f_tilde()

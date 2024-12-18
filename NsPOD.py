@@ -1,64 +1,68 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from numpy import meshgrid
-import torch.optim as optim
-from torch.utils.data import TensorDataset, DataLoader, Dataset
-from torch.autograd import gradcheck
-from numpy import exp, mod, meshgrid, cos, sin, exp, pi
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.ndimage import shift
-from math import sqrt
-from scipy.sparse import diags
-from scipy.linalg import cholesky
 
 
 # ============================================================================ #
 #                    Neural network class and functions                        #
 # ============================================================================ #
+@torch.jit.script
+def nuclear_norm(input_matrix: torch.Tensor) -> torch.Tensor:
+    # Forward computation
+    return torch.linalg.matrix_norm(input_matrix, ord="nuc")
+
+
+@torch.jit.script
+def nuclear_norm_grad(input_matrix: torch.Tensor, grad_output: torch.Tensor) -> torch.Tensor:
+    u, s, v = torch.linalg.svd(input_matrix, full_matrices=False)
+    rank = (s > 0).sum().item()
+    eye_approx = torch.diag_embed((s > 0).to(input_matrix.dtype)[:rank])
+    grad_input = torch.matmul(u[:, :rank], eye_approx)
+    grad_input = torch.matmul(grad_input, v[:, :rank].transpose(-2, -1))
+    return grad_input * grad_output.unsqueeze(-1).unsqueeze(-1)
+
+
 class NuclearNormAutograd(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input_matrix):
         ctx.save_for_backward(input_matrix)
-        return torch.linalg.matrix_norm(input_matrix, ord="nuc")
+        return nuclear_norm(input_matrix)
 
     @staticmethod
     def backward(ctx, grad_output):
         input_matrix, = ctx.saved_tensors
-        u, s, v = torch.svd(input_matrix, some=False)
-        rank = torch.sum(s > 0).item()
-        dtype = input_matrix.dtype
-        eye_approx = torch.diag((s > 0).to(dtype)[:rank])
-        grad_input = torch.matmul(torch.matmul(u[:, :rank], eye_approx), v[:, :rank].t())
-        return grad_input * grad_output.unsqueeze(-1).unsqueeze(-1)
+        return nuclear_norm_grad(input_matrix, grad_output)
 
 
 class ShapeNet(nn.Module):
-    def __init__(self):
+    def __init__(self, n, m, x, t):
         super(ShapeNet, self).__init__()
 
         self.elu = nn.ELU()
+        self.n = n
+        self.m = m
+        self.x = x
+        self.t = t
 
         # Subnetwork for f^1
-        self.f1_fc1 = nn.Linear(2, 5)
-        self.f1_fc2 = nn.Linear(5, 10)
-        self.f1_fc3 = nn.Linear(10, 5)
-        self.f1_fc4 = nn.Linear(5, 1)
+        self.f1_fc1 = nn.Linear(2, 15)
+        self.f1_fc2 = nn.Linear(15, 50)
+        self.f1_fc3 = nn.Linear(50, 100)
+        self.f1_fc4 = nn.Linear(100, self.n * self.m)
 
-    def forward(self, x, t, coeffs):
+    def forward(self, coeffs):
         # Pathway for f^1 and shift^1
-        shift1 = sum([coeff * t ** (1 - i) for i, coeff in enumerate(coeffs)])
-
-        x_shifted1 = x + shift1
-        f1 = self.elu(self.f1_fc1(torch.cat((x_shifted1, t), dim=1)))
+        f1 = self.elu(self.f1_fc1(coeffs))
         f1 = self.elu(self.f1_fc2(f1))
         f1 = self.elu(self.f1_fc3(f1))
         f1 = self.f1_fc4(f1)
 
-        f1_without_shift = self.elu(self.f1_fc1(torch.cat((x, t), dim=1)))
-        f1_without_shift = self.elu(self.f1_fc2(f1_without_shift))
-        f1_without_shift = self.elu(self.f1_fc3(f1_without_shift))
-        f1_without_shift = self.f1_fc4(f1_without_shift)
+        return f1
 
-        return f1, f1_without_shift
+    @torch.jit.ignore
+    def Jacobian_forward(self, coeffs):
+        f1_jac = torch.func.jacfwd(self.forward)(coeffs)
+        return f1_jac
+
+    # @torch.jit.export
+    # def wrapper(self, coeffs):
+    #     return self.forward(coeffs)

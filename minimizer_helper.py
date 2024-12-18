@@ -86,6 +86,5 @@ def Q_recons(phiBeta, alpha):
     return torch.einsum('ij,j->ij', phiBeta, alpha)
 
 
-def reconstruction_error(Q, alpha, beta, param):
-    phiBeta = generate_phi(param, beta)
+def reconstruction_error(Q, phiBeta, alpha):
     return torch.linalg.norm(Q - Q_recons(phiBeta, alpha)) / torch.linalg.norm(Q)
